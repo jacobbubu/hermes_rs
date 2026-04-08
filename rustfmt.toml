@@ -1,0 +1,8 @@
+# https://rust-lang.github.io/rustfmt/
+# Only stable options — nightly-only options commented for future reference.
+match_block_trailing_comma     = true
+single_line_if_else_max_width  = 0
+single_line_let_else_max_width = 0
+style_edition                  = "2024"
+use_field_init_shorthand       = true
+use_try_shorthand              = true

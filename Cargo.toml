@@ -1,0 +1,42 @@
+[workspace]
+members = [
+  "crates/hermes-types",
+]
+resolver = "2"
+
+[workspace.lints.rust]
+unsafe_code           = "deny"
+unused_qualifications = "deny"
+
+[workspace.lints.clippy]
+expect_used = "deny"
+unwrap_used = "deny"
+
+[workspace.package]
+edition      = "2024"
+license      = "MIT"
+repository   = "https://github.com/jacobbubu/hermes_rs"
+rust-version = "1.85"
+version      = "0.1.0"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { features = ["full"], version = "1" }
+# Serialization
+serde      = { features = ["derive"], version = "1" }
+serde_json = "1"
+serde_yaml = "0.9"
+# Error handling
+anyhow    = "1"
+thiserror = "2"
+# Logging
+tracing            = "0.1"
+tracing-subscriber = { features = ["env-filter"], version = "0.3" }
+# Database
+sqlx = { features = ["migrate", "runtime-tokio", "sqlite"], version = "0.8" }
+# HTTP client
+reqwest = { features = ["json", "stream"], version = "0.12" }
+# Utilities
+chrono = { features = ["serde"], version = "0.4" }
+regex  = "1"
+uuid   = { features = ["v4", "serde"], version = "1" }
