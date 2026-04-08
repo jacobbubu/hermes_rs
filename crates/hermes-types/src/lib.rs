@@ -3,3 +3,11 @@
 //! This crate defines the message, tool call, session, and tool schema types
 //! that form the lingua franca of the hermes_rs system. All types are
 //! wire-compatible with the Python Hermes Agent implementation.
+
+mod message;
+mod session;
+mod tool;
+
+pub use message::{Message, Role, ToolCall, ToolFunction};
+pub use session::Session;
+pub use tool::{ToolEntry, ToolSchema, ToolSource};

@@ -1,0 +1,15 @@
+[package]
+name         = "hermes-error"
+description  = "Error types and context trait for hermes_rs"
+edition.workspace      = true
+license.workspace      = true
+repository.workspace   = true
+rust-version.workspace = true
+version.workspace      = true
+
+[dependencies]
+serde_json = { workspace = true }
+thiserror  = { workspace = true }
+
+[lints]
+workspace = true
