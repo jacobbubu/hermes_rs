@@ -8,12 +8,64 @@
 
 实现 SQLite session 数据库，精确匹配 Python `hermes_state.py` 的 schema 和行为。使用 `sqlx`（async，与 Moltis 一致）。
 
+**改进点**: Python 原实现直接耦合 sqlite3，无存储抽象。我们加一层 `SessionStore` trait，SQLite 只是第一个实现，未来可替换为 PostgreSQL 或其他后端。这也是学习 Rust trait 作为接口抽象的好机会。
+
 ## 对照源码
 
 **Python 实现**: `/Users/rongshen/github/hermes-agent/hermes_state.py` (~1,304 行)
 **Moltis 参考**: `/Users/rongshen/github/moltis/crates/sessions/`
 
 ## 计划步骤
+
+### Step 2.0: SessionStore trait (存储抽象层)
+
+**做什么**: 先定义 trait 接口，再实现 SQLite 后端。这样上层代码只依赖 trait，不知道底层是 SQLite 还是别的。
+
+```rust
+/// 存储抽象 — 上层代码只看到这个 trait，不关心底层数据库。
+#[async_trait]
+pub trait SessionStore: Send + Sync {
+    // Session 生命周期
+    async fn create_session(&self, session: &Session) -> Result<()>;
+    async fn get_session(&self, id: &str) -> Result<Option<Session>>;
+    async fn end_session(&self, id: &str, end_reason: &str) -> Result<()>;
+    async fn list_sessions(&self, source: Option<&str>, limit: i64) -> Result<Vec<Session>>;
+
+    // 消息操作
+    async fn append_message(&self, msg: &Message) -> Result<i64>;
+    async fn get_messages(&self, session_id: &str) -> Result<Vec<Message>>;
+
+    // 搜索
+    async fn search_messages(
+        &self,
+        query: &str,
+        session_id: Option<&str>,
+    ) -> Result<Vec<SearchResult>>;
+
+    // 元数据更新
+    async fn update_session_tokens(
+        &self,
+        id: &str,
+        input_tokens: i64,
+        output_tokens: i64,
+    ) -> Result<()>;
+}
+```
+
+**设计决策**:
+- 用 `async_trait` 宏让 trait 方法可以 async（Rust 原生 trait 还不完全支持 async）
+- 参数用 `&self`（不可变引用），内部并发由实现者管理（如 sqlx pool）
+- 返回 `Result<T>`，错误类型在 crate 内定义
+- `Send + Sync` bound 确保可以跨线程共享（多个请求并发使用同一个 store）
+
+**与 Python 对比**:
+```
+Python:  session_db = SessionDB(path)     # 直接绑定 sqlite3
+Rust:    store: Box<dyn SessionStore>      # 只知道接口，不知道实现
+         store = SqliteSessionStore::new(path).await?  # 具体实现在使用方选择
+```
+
+**类比**: 就像 Python 的 ABC（Abstract Base Class），但 Rust 的 trait 在编译时检查，不会遗漏方法。
 
 ### Step 2.1: Schema 初始化 (sqlx migration)
 
@@ -93,13 +145,19 @@ CREATE INDEX idx_messages_session ON messages(session_id, timestamp);
 
 **Rust 代码结构**:
 ```rust
-pub struct SessionDb {
+/// SQLite 实现 — SessionStore trait 的第一个后端。
+pub struct SqliteSessionStore {
     pool: SqlitePool,
 }
 
-impl SessionDb {
+impl SqliteSessionStore {
     pub async fn new(db_path: &str) -> Result<Self>;
     // 内部调用 sqlx::migrate!() 执行 migration
+}
+
+#[async_trait]
+impl SessionStore for SqliteSessionStore {
+    // ... 实现所有 trait 方法
 }
 ```
 
@@ -131,7 +189,7 @@ let pool = SqlitePoolOptions::new()
 **做什么**: Session 生命周期方法。
 
 ```rust
-impl SessionDb {
+impl SqliteSessionStore {
     pub async fn create_session(&self, session: &Session) -> Result<()>;
     pub async fn end_session(&self, id: &str, end_reason: &str) -> Result<()>;
     pub async fn get_session(&self, id: &str) -> Result<Option<Session>>;
@@ -148,7 +206,7 @@ impl SessionDb {
 **做什么**: 消息追加和检索。
 
 ```rust
-impl SessionDb {
+impl SqliteSessionStore {
     pub async fn append_message(&self, msg: &Message) -> Result<i64>;
     pub async fn get_messages(&self, session_id: &str) -> Result<Vec<Message>>;
 }
@@ -171,7 +229,7 @@ impl SessionDb {
 **做什么**: 全文搜索。
 
 ```rust
-impl SessionDb {
+impl SqliteSessionStore {
     pub async fn search_messages(
         &self,
         query: &str,
@@ -207,6 +265,9 @@ pub struct SearchResult {
 | `#[tokio::test]` | 异步测试宏 | 所有测试函数 |
 | `tempfile` | 创建临时文件/目录，测试后自动清理 | 测试中的临时 DB |
 | `Mutex` | 互斥锁（如果需要单写入者语义） | 可能用于 checkpoint |
+| `async_trait` | 让 trait 方法支持 async | `SessionStore` trait |
+| `dyn Trait` | 动态分发（类似 Python ABC） | `Box<dyn SessionStore>` |
+| trait 作为接口 | 定义行为契约，实现与使用解耦 | `SessionStore` → `SqliteSessionStore` |
 
 ## 目录结构（预期）
 
@@ -216,11 +277,11 @@ crates/hermes-state/
 ├── migrations/
 │   └── 001_init.sql          # 完整 schema DDL
 └── src/
-    ├── lib.rs                # SessionDb 公开 API
+    ├── lib.rs                # 公开 API + re-exports
     ├── error.rs              # crate 级错误类型
-    ├── session_ops.rs        # create/end/get session
-    ├── message_ops.rs        # append/get messages
-    └── search.rs             # FTS5 搜索
+    ├── store.rs              # SessionStore trait 定义
+    ├── sqlite.rs             # SqliteSessionStore 实现
+    └── search.rs             # SearchResult 类型 + FTS5 逻辑
 ```
 
 ## 质量门
@@ -233,9 +294,10 @@ crates/hermes-state/
 
 ## 与 Python 对照
 
-| Rust 方法 | Python 方法 | 行为差异 |
-|-----------|------------|----------|
-| `SessionDb::new()` | `SessionDB.__init__()` | sqlx 连接池 vs 单连接 + threading.Lock |
+| Rust | Python | 行为差异 |
+|------|--------|----------|
+| `SessionStore` trait | 无（直接耦合 sqlite3） | **新增抽象层**，Python 没有的改进 |
+| `SqliteSessionStore::new()` | `SessionDB.__init__()` | sqlx 连接池 vs 单连接 + threading.Lock |
 | `create_session()` | `create_session()` | 相同 SQL |
 | `end_session()` | `end_session()` | 相同 SQL |
 | `append_message()` | `append_message()` | 相同 SQL + 计数器更新 |
