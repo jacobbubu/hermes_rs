@@ -1,0 +1,24 @@
+[package]
+name         = "hermes-state"
+description  = "Session storage abstraction and SQLite implementation for hermes_rs"
+edition.workspace      = true
+license.workspace      = true
+repository.workspace   = true
+rust-version.workspace = true
+version.workspace      = true
+
+[dependencies]
+hermes-error = { path = "../hermes-error" }
+hermes-types = { path = "../hermes-types" }
+async-trait  = "0.1"
+serde_json   = { workspace = true }
+sqlx         = { workspace = true }
+thiserror    = { workspace = true }
+tracing      = { workspace = true }
+
+[dev-dependencies]
+tokio    = { workspace = true }
+tempfile = "3"
+
+[lints]
+workspace = true

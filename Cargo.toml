@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "crates/hermes-error",
+  "crates/hermes-state",
   "crates/hermes-types",
 ]
 resolver = "2"
